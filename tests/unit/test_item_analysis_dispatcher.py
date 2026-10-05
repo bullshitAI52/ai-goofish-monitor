@@ -129,3 +129,51 @@ def test_item_analysis_dispatcher_supports_keyword_mode_without_ai():
     asyncio.run(run())
     assert saved_records[0]["ai_analysis"]["analysis_source"] == "keyword"
     assert saved_records[0]["ai_analysis"]["is_recommended"] is True
+
+
+def test_failed_save_is_reported_after_other_jobs_finish():
+    import pytest
+
+    async def run(fail_early, raises):
+        notifications = []
+        saved = []
+
+        async def unused(*args):
+            return {}
+
+        async def saver(record, keyword):
+            item_id = record['商品信息']['商品ID']
+            if item_id == 'bad':
+                if raises:
+                    raise OSError('disk full')
+                return False
+            await asyncio.sleep(0.01)
+            saved.append(item_id)
+            return True
+
+        async def notifier(item, reason):
+            notifications.append(item['商品ID'])
+
+        dispatcher = ItemAnalysisDispatcher(
+            concurrency=2, skip_ai_analysis=True, seller_loader=unused,
+            image_downloader=unused, ai_analyzer=unused, notifier=notifier, saver=saver,
+        )
+        for item_id in ('bad', 'good'):
+            dispatcher.submit(ItemAnalysisJob(
+                keyword='demo', task_name='demo', decision_mode='ai',
+                analyze_images=False, prompt_text='', keyword_rules=(),
+                final_record={'商品信息': {'商品ID': item_id}}, seller_id=None,
+                zhima_credit_text=None, registration_duration_text='',
+            ))
+        if fail_early:
+            await asyncio.sleep(0.03)
+        with pytest.raises(OSError if raises else RuntimeError):
+            await dispatcher.join()
+        assert saved == ['good']
+        assert notifications == ['good']
+        assert dispatcher.completed_count == 1
+        assert not dispatcher._tasks
+
+    for fail_early in (False, True):
+        for raises in (False, True):
+            asyncio.run(run(fail_early, raises))

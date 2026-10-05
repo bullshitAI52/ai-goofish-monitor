@@ -14,6 +14,9 @@ NC='\033[0m' # No Color
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+if [ -f "$SCRIPT_DIR/.venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/.venv/bin/activate"
+fi
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}闲鱼监控系统 - 本地启动脚本${NC}"
@@ -63,7 +66,7 @@ else
     fi
 fi
 
-if ! python3 -m pip --version >/dev/null 2>&1; then
+if ! command -v uv >/dev/null 2>&1 && ! python3 -m pip --version >/dev/null 2>&1; then
     MISSING_ITEMS+=("pip")
 fi
 
@@ -75,40 +78,6 @@ if ! command -v npm >/dev/null 2>&1; then
     MISSING_ITEMS+=("npm")
 fi
 
-if ! python3 -m playwright --version >/dev/null 2>&1; then
-    MISSING_ITEMS+=("playwright")
-fi
-
-has_browser=false
-case "$OS_FAMILY" in
-    macos)
-        if [ -d "/Applications/Google Chrome.app" ] || [ -d "/Applications/Microsoft Edge.app" ]; then
-            has_browser=true
-        fi
-        ;;
-    linux|wsl)
-        if command -v google-chrome >/dev/null 2>&1 \
-            || command -v google-chrome-stable >/dev/null 2>&1 \
-            || command -v chromium >/dev/null 2>&1 \
-            || command -v chromium-browser >/dev/null 2>&1 \
-            || command -v microsoft-edge >/dev/null 2>&1 \
-            || command -v microsoft-edge-stable >/dev/null 2>&1; then
-            has_browser=true
-        fi
-        ;;
-    windows)
-        if [ -d "/c/Program Files/Google/Chrome/Application" ] \
-            || [ -d "/c/Program Files (x86)/Google/Chrome/Application" ] \
-            || [ -d "/c/Program Files (x86)/Microsoft/Edge/Application" ] \
-            || [ -d "/c/Program Files/Microsoft/Edge/Application" ]; then
-            has_browser=true
-        fi
-        ;;
-esac
-
-if [ "$has_browser" = false ]; then
-    MISSING_ITEMS+=("浏览器(Chrome 或 Edge)")
-fi
 
 
 print_solution_macos() {
@@ -303,7 +272,13 @@ if [ ! -f "requirements.txt" ]; then
 fi
 
 echo "正在安装 Python 依赖..."
-python3 -m pip install -r requirements.txt --quiet
+# uv-created virtual environments may not include pip.
+if command -v uv >/dev/null 2>&1; then
+    uv pip install --python "$(command -v python3)" -r requirements.txt --quiet
+else
+    python3 -m pip install -r requirements.txt --quiet
+fi
+python3 -m playwright install chromium
 echo -e "${GREEN}✓ Python 依赖安装完成${NC}"
 
 # 3. 构建前端

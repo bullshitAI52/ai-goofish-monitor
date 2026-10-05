@@ -5,6 +5,15 @@
 基于 Playwright 和 AI 的闲鱼多任务实时监控，提供完整的 Web 管理界面。
 
 
+## 本分支修改说明
+
+本分支修复登录快照请求头复用、本地浏览器通道、非交互调试收尾，以及后台分析失败漏报等问题，并补充 macOS 本地启动脚本。
+
+- [完整修改说明与验证范围](MODIFICATIONS.md)
+- [本地安装、模型配置与启动方法](LOCAL_SETUP.md)
+
+已验证 macOS 本地运行环境；尚未验证 Docker 部署和真实闲鱼 / AI 服务调用。
+
 ## 核心特性
 
 - **Web 可视化管理**: 任务管理、账号管理、AI 标准编辑、运行日志、结果浏览
@@ -129,7 +138,7 @@ docker compose up -d
 - Python 3.10+
 - Node.js + npm（本地验证 `Node v20.18.3` 可完成前端构建）
 - Playwright CLI 与 Chromium，首次运行前建议执行 `python3 -m pip install playwright && python3 -m playwright install chromium`
-- Chrome / Edge 浏览器（Linux 环境也可使用 Chromium；`start.sh` 会先检查浏览器是否存在）
+- 默认使用 Playwright 自带的 Chromium；只有设置 `LOGIN_IS_EDGE=true` 时才需要系统 Edge。
 
 ```bash
 git clone https://github.com/Usagi-org/ai-goofish-monitor
@@ -280,7 +289,7 @@ AI 模式会先生成分析标准，再创建任务。现在该流程已改为�
 
 ### `./start.sh` 为什么提示缺少 Playwright 或浏览器？
 
-这是脚本的前置检查。请先安装 Playwright CLI 与 Chromium，并确保系统中可用 Chrome / Edge（Linux 环境也可用 Chromium），然后重新执行 `./start.sh`。
+这是脚本的前置检查。请先安装 Playwright CLI 与 Chromium，并确保当前 Python 环境已执行 `python3 -m playwright install chromium`，然后重新执行 `./start.sh`。
 
 </details>
 

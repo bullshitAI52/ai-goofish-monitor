@@ -92,7 +92,7 @@ def _resolve_browser_channel() -> str:
             )
             EDGE_DOCKER_WARNING_PRINTED = True
         return "chromium"
-    return "msedge" if LOGIN_IS_EDGE else "chrome"
+    return "msedge" if LOGIN_IS_EDGE else "chromium"
 
 
 def _should_analyze_images(task_config: dict) -> bool:
@@ -329,10 +329,18 @@ def _build_context_overrides(snapshot: dict) -> dict:
 def _build_extra_headers(raw_headers: Optional[dict]) -> dict:
     if not raw_headers:
         return {}
-    excluded = {"cookie", "content-length"}
+    # Snapshot headers belong to the original request. Let the browser generate
+    # request metadata for the current URL, body and browser version.
+    excluded = {
+        "cookie", "referer", "accept", "accept-encoding", "content-type",
+        "content-length", "origin", "user-agent", "host", "connection",
+    }
     headers = {}
     for key, value in raw_headers.items():
-        if not key or key.lower() in excluded or value is None:
+        if not key or value is None:
+            continue
+        name = key.lower()
+        if name in excluded or name.startswith(("sec-fetch-", "sec-ch-ua")):
             continue
         headers[key] = value
     return headers
@@ -1164,14 +1172,16 @@ async def scrape_xianyu(task_config: dict, debug_limit: int = 0):
                 print(f"\n爬取过程中发生未知错误: {e}")
                 raise
             finally:
-                if analysis_dispatcher is not None:
-                    log_time("等待后台分析任务完成...")
-                    await analysis_dispatcher.join()
-                log_time("任务执行完毕，浏览器将在5秒后自动关闭...")
-                await asyncio.sleep(5)
-                if debug_limit:
-                    input("按回车键关闭浏览器...")
-                await browser.close()
+                try:
+                    if analysis_dispatcher is not None:
+                        log_time("等待后台分析任务完成...")
+                        await analysis_dispatcher.join()
+                    log_time("任务执行完毕，浏览器将在5秒后自动关闭...")
+                    await asyncio.sleep(5)
+                    if debug_limit:
+                        log_time("调试模式：浏览器将自动关闭")
+                finally:
+                    await browser.close()
 
         return processed_item_count
 

@@ -55,15 +55,24 @@ class ItemAnalysisDispatcher:
         self._saver = saver
         self._tasks: set[asyncio.Task] = set()
         self.completed_count = 0
+        self._failure: Optional[BaseException] = None
 
     def submit(self, job: ItemAnalysisJob) -> None:
         task = asyncio.create_task(self._process_with_limit(job))
         self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        error = asyncio.CancelledError() if task.cancelled() else task.exception()
+        if error is not None and self._failure is None:
+            self._failure = error
 
     async def join(self) -> None:
         while self._tasks:
-            await asyncio.gather(*tuple(self._tasks))
+            await asyncio.gather(*tuple(self._tasks), return_exceptions=True)
+        if self._failure is not None:
+            raise self._failure
 
     async def _process_with_limit(self, job: ItemAnalysisJob) -> None:
         async with self._semaphore:
@@ -74,8 +83,9 @@ class ItemAnalysisDispatcher:
         item_data = record.get("商品信息", {}) or {}
         record["卖家信息"] = await self._load_seller_info(job)
         record["ai_analysis"] = await self._build_analysis_result(job, record)
-        if await self._saver(record, job.keyword):
-            self.completed_count += 1
+        if not await self._saver(record, job.keyword):
+            raise RuntimeError(f"商品 {item_data.get('商品ID', '未知')} 保存失败")
+        self.completed_count += 1
         await self._notify_if_recommended(item_data, record["ai_analysis"])
 
     async def _load_seller_info(self, job: ItemAnalysisJob) -> dict:
